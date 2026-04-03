@@ -1,0 +1,37 @@
+# 训练产物
+experiments/
+videos/
+results/
+wandb/
+
+# Python 缓存
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Git
+.git/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 数据集（容器内下载或挂载）
+libero/datasets/
+
+# 临时文件
+*.log
+*.tmp
+
+# notebooks
+notebooks/
+*.ipynb
+
+# Docker 自身
+Dockerfile
+.dockerignore
