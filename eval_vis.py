@@ -4,7 +4,7 @@
 
 用法:
     # 仅显示实时窗口
-    python eval_vis.py --model_path /home/ydj/article/LIBERO/experiments/LIBERO_90/Multitask/DiffusionPolicy_seed0/run_001/multitask_model_ep5.pth --task_id 1
+    python eval_vis.py --model_path /home/ydj/article/LIBERO/experiments/LIBERO_SPATIAL/Multitask/DiffusionPolicy_seed0/run_001/multitask_model_ep0.pth --task_id 1
 
     # 显示实时窗口并保存视频
     python eval_vis.py --model_path /home/ydj/article/LIBERO/experiments/LIBERO_SPATIAL/Multitask/DiffusionPolicy_seed0/run_001/multitask_model_ep35.pth --task_id 1 --save_video

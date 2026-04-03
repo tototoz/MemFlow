@@ -47,7 +47,7 @@ export CUDA_VISIBLE_DEVICES=0 && export MUJOCO_EGL_DEVICE_ID=0
 
 # Diffusion Policy baseline
 python train.py policy=diffusion_policy benchmark_name=LIBERO_90 \
-  lifelong=multitask seed=0 'eval.eval=false' train.n_epochs=1000
+  lifelong=multitask seed=0 'eval.eval=false' train.n_epochs=1000 hydra.run.dir=/robot/bionic-control-data/zhq-disk/libero
 
 # 其他 baseline 同理
 python train.py policy=bc_transformer_policy benchmark_name=LIBERO_SPATIAL \

@@ -170,11 +170,12 @@ def get_task_embs(cfg, descriptions):
         descriptions = [f"Task {i+offset}" for i in range(len(descriptions))]
 
     if cfg.task_embedding_format == "bert" or cfg.task_embedding_format == "one-hot":
+        bert_cache_dir = cfg.get("bert_cache_dir", "./bert")
         tz = AutoTokenizer.from_pretrained(
-            "bert-base-cased", cache_dir=to_absolute_path("./bert")
+            "bert-base-cased", cache_dir=to_absolute_path(bert_cache_dir)
         )
         model = AutoModel.from_pretrained(
-            "bert-base-cased", cache_dir=to_absolute_path("./bert")
+            "bert-base-cased", cache_dir=to_absolute_path(bert_cache_dir)
         )
         tokens = tz(
             text=descriptions,  # the sentence to be encoded

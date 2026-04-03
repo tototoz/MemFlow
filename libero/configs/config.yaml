@@ -12,14 +12,15 @@ defaults:
 seed: 10000
 use_wandb: false
 wandb_project: "lifelong learning"
-folder: null # use default path
-bddl_folder: null # use default path
-init_states_folder: null # use default path
-experiment_dir: null # if specified, use this path; otherwise auto-generate
+folder: /home/ydj/datasets # use default path
+bddl_folder: /home/ydj/article/LIBERO/libero/libero/./bddl_files # use default path
+init_states_folder: /home/ydj/article/LIBERO/libero/libero/./init_files # use default path
+experiment_dir: /home/ydj # if specified, use this path; otherwise auto-generate
 load_previous_model: false
 device: "cuda"
 task_embedding_format: "bert"
 task_embedding_one_hot_offset: 1
+bert_cache_dir: "/home/ydj/bert"
 pretrain: false
 pretrain_model_path: ""
 benchmark_name: "LIBERO_SPATIAL"
