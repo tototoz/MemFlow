@@ -14,9 +14,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git wget curl vim \
     # 编译工具
     build-essential cmake \
+    # OpenCV / EGL 渲染依赖
+    libglib2.0-0 libsm6 libxrender1 libxext6 libgl1-mesa-glx \
     # mujoco-py 编译依赖
     libgl1-mesa-dev libglu1-mesa-dev libosmesa6-dev \
     libglew-dev libglfw3-dev \
+    # EGL 头文件 (MuJoCo 渲染)
+    libegl1-mesa-dev libgles2-mesa-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # 设置 Python 3.8 为默认
