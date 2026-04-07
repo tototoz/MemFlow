@@ -453,11 +453,7 @@ class ACTPolicy(BasePolicy):
     def get_action(self, data):
         """
         Inference: sample z ~ N(0, I) and decode.
-
-        For inference:
-        1. Sample z from prior N(0, I)
-        2. Decode z with observation condition to get action sequence
-        3. Apply temporal aggregation for smooth execution
+        Returns: (B, action_dim) numpy array
         """
         self.eval()
         data = self.preprocess_input(data, train_mode=False)
@@ -466,45 +462,37 @@ class ACTPolicy(BasePolicy):
             obs_cond = self.encode_obs(data)
             B = obs_cond.shape[0]
 
-            # Sample z from prior N(0, I)
-            z = torch.randn(B, self.latent_dim, device=obs_cond.device)
+            # Deterministic z (mean of prior N(0, I))
+            z = torch.zeros(B, self.latent_dim, device=obs_cond.device)
 
             # Decode action sequence
             actions = self.cvae_decoder(z, obs_cond)  # (B, horizon, action_dim)
 
             # Temporal aggregation (optional)
             if self.temporal_agg:
-                # Get current step index
-                step_idx = len(self.action_buffer.get("actions", []))
-
-                # Pop old action from buffer
-                if step_idx == 0 or step_idx >= self.horizon:
+                if "step_idx" not in self.action_buffer:
                     # Start new chunk
                     self.action_buffer["actions"] = list(actions[0])  # List of horizon actions
-                    self.action_buffer["weights"] = [self.ema_alpha ** i
-                                                      for i in range(self.horizon)]
+                    self.action_buffer["step_idx"] = 0
 
-                # Get action for current step with exponential weighting
-                if step_idx < len(self.action_buffer["actions"]):
-                    # Weighted average of predictions at this step
-                    action = self.action_buffer["actions"][step_idx].cpu().numpy()
-                else:
-                    # Fallback: start new chunk
+                step_idx = self.action_buffer["step_idx"]
+                buf = self.action_buffer["actions"]
+
+                if step_idx >= len(buf):
+                    # Chunk exhausted, start new one
                     self.action_buffer["actions"] = list(actions[0])
-                    action = actions[:, 0, :].cpu().numpy()
+                    self.action_buffer["step_idx"] = 0
+                    step_idx = 0
+
+                action = self.action_buffer["actions"][step_idx].cpu().numpy()
+                self.action_buffer["step_idx"] = step_idx + 1
             else:
-                # No temporal aggregation: use first action of chunk
-                # Pop actions from buffer
                 if "actions" not in self.action_buffer or len(self.action_buffer["actions"]) == 0:
                     self.action_buffer["actions"] = list(actions[0])
 
                 action = self.action_buffer["actions"].pop(0).cpu().numpy()
 
-                # If buffer empty, need new chunk
-                if len(self.action_buffer["actions"]) == 0:
-                    self.action_buffer["actions"] = list(actions[0])
-
-        return action
+        return action.reshape(1, -1)  # (1, action_dim)
 
     def reset(self):
         """Clear observation history and action buffer."""

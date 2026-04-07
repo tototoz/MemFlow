@@ -110,16 +110,6 @@ where ```DATASET``` is chosen from `[libero_spatial, libero_object, libero_100, 
 
 **Router 输出：积分步数 ∈ {2, 4, 8, 16}**
 
-**与 ProbeFlow（最直接的竞争者）的本质区别：**
-
-| 对比维度 | ProbeFlow | Ours |
-|----------|-----------|------|
-| 判断依据 | 速度场余弦相似度（几何曲率） | 记忆状态（任务语义） |
-| 判断时机 | 事后：先试一步再看弯不弯 | 事前：看记忆直接预判 |
-| 额外开销 | 2 次前向传播（探测用） | 1 次轻量 MLP（~0.1ms） |
-| 语义感知 | 无（纯数学指标） | 有（知道任务上下文） |
-| 失败案例 | 轨迹前半段直后半段弯 → 误判 | 记忆知道即将进入精细阶段 → 正确 |
-
 **记忆如何帮助步数预测的具体例子：**
 
 ```
@@ -127,15 +117,14 @@ where ```DATASET``` is chosen from `[libero_spatial, libero_object, libero_100, 
 
 时刻 t=200: 正在搬运第 2 个物体（匀速移动）
   只看当前帧: 手里有物体，不确定在干什么
-  ProbeFlow:  速度场恰好是直的 → 选 2 步 ✅（碰巧对了）
+  自适应路由: 速度场恰好是直的 → 选 2 步 ✅
 
 时刻 t=250: 准备放下第 2 个物体（接近盒子上方）
   只看当前帧: 手在盒子上方，和放第 1 个时一样
-  ProbeFlow:  速度场开始弯曲 → 选 8 步 ✅
+  自适应路由: 速度场开始弯曲 → 选 8 步 ✅
 
 时刻 t=300: 放完第 2 个，转头去拿第 3 个
   只看当前帧: 手是空的，桌上有 1 个物体 → 和 t=0（拿第 1 个）视觉很像
-  ProbeFlow:  速度场方向取决于噪声初始化，不确定 → 可能选错
   Ours: 情景记忆记录了"已放 2 个" → 知道该拿第 3 个 → 明确的目标
         → 路径清晰 → 选 4 步 ✅
 ```
@@ -609,12 +598,12 @@ MemFlow 记忆+自适应（默认）   │     ~80%       │     ~82%      │ 
 
 | 实验 | GPU 需求 | 时间估算 |
 |------|---------|---------|
-| 5 种 baseline × 4 LIBERO × 3 seeds | 8× A100 | ~3 天（并行） |
+| 3 种 baseline × 4 LIBERO × 3 seeds | 4× A100 | ~2 天（并行） |
 | MemFlow Phase 1 训练（LIBERO × 4） | 2× A100 | ~1.5 天 |
 | MemFlow Phase 2+3 训练 | 1× A100 | ~0.5 天 |
 | 消融实验（6 变体 × LIBERO-Goal + LIBERO-100） | 4× A100 | ~1.5 天 |
 | λ_speed 扫参（5组）+ 可视化分析 | 1× A100 | ~半天 |
-| **总计** | **8× A100** | **~7 天** |
+| **总计** | **4× A100** | **~6 天** |
 
 ---
 
@@ -632,10 +621,10 @@ Abstract (250 words)
    - 贡献：统一的记忆框架同时解决两个问题
 
 2. Related Work (1 page)
-   2.1 Diffusion/Flow Matching Policy (DP, FMP, π₀, ACT)
-   2.2 采样加速方法 (ProbeFlow, Consistency Policy, A2A, SDP, DDIM)
+   2.1 Diffusion/Flow Matching Policy (DP, FMP, ACT)
+   2.2 采样加速方法 (DDIM, adaptive computation)
    2.3 记忆与机器人学习 (Memory-augmented IL, episodic memory in RL)
-   2.4 自适应计算 (CALM, early exit, adaptive depth in NLP/CV)
+   2.4 自适应计算 (early exit, adaptive depth in NLP/CV)
 
 3. Method (3 pages)
    3.1 Preliminaries: Conditional Flow Matching
@@ -650,8 +639,7 @@ Abstract (250 words)
    4.2 Main Results (Table 1, 2)
    4.3 Ablation Study (Table 3)
    4.4 Router Behavior Analysis (Figure)
-   4.5 Comparison with ProbeFlow (Figure + Case Study)
-   4.6 Visualization (Figure)
+   4.5 Visualization (Figure)
 
 5. Conclusion (0.5 page)
 
@@ -737,8 +725,7 @@ Week 1 ─── 并行启动
     ├── Day 5-7: 并行训练所有 baseline（多卡同时跑）
     │   ├── GPU 0-1: Flow Matching Policy
     │   ├── GPU 2-3: Diffusion Policy（已完成集成，正在训练）
-    │   ├── GPU 4-5: Consistency Policy
-    │   └── GPU 6-7: ProbeFlow + ACT
+    │   └── GPU 4-5: ACT
     └── Day 7: 编写统一评测脚本
 
   ✅ Week 1 检查点: A+B 模块能拼通，C 有全部 baseline 数字
@@ -784,7 +771,6 @@ Week 3 ─── 全量实验（8 卡全开）
 
   C 负责补充实验 + 可视化 + 写作:
     ├── RoboMimic 补充实验
-    ├── ProbeFlow 对比 case 分析
     ├── 可视化（t-SNE, 事件检测, Router 分布, Pareto 曲线）
     └── 持续写 Experiments（数字出一个填一个）
 
@@ -875,8 +861,6 @@ memflow/
 ├── baselines/                # Baseline 复现/接口
 │   ├── diffusion_policy/
 │   ├── flow_matching_policy/
-│   ├── consistency_policy/
-│   ├── probeflow/
 │   └── act/
 └── scripts/
     ├── run_all_baselines.sh
@@ -910,10 +894,6 @@ memflow/
 
 1. Chi et al., "Diffusion Policy: Visuomotor Policy Learning via Action Diffusion", RSS 2023
 2. Lipman et al., "Flow Matching for Generative Modeling", ICLR 2023
-3. Høeg et al., "Streaming Diffusion Policy", arXiv 2024
-4. Fang et al., "ProbeFlow: Training-Free Adaptive Flow Matching for VLA Models", arXiv 2026
-5. Jia et al., "A2A: Action-to-Action Flow Matching", arXiv 2026
-6. Zhao et al., "Learning Fine-Grained Bimanual Manipulation with Low-Cost Hardware (ACT)", RSS 2023
-7. Song et al., "Consistency Models", ICML 2023
-8. Oquab et al., "DINOv2: Learning Robust Visual Features", TMLR 2024
-9. Liu et al., "LIBERO: Benchmarking Knowledge Transfer for Lifelong Robot Learning", NeurIPS 2023
+3. Zhao et al., "Learning Fine-Grained Bimanual Manipulation with Low-Cost Hardware (ACT)", RSS 2023
+4. Oquab et al., "DINOv2: Learning Robust Visual Features", TMLR 2024
+5. Liu et al., "LIBERO: Benchmarking Knowledge Transfer for Lifelong Robot Learning", NeurIPS 2023
