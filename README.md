@@ -348,11 +348,9 @@ python benchmark_scripts/download_libero_datasets.py
 
 | 方法 | 类别 | 积分步数 | 说明 | 实现状态 |
 |------|------|---------|------|---------|
-| Diffusion Policy (DDIM-10) | 扩散 | 10 固定 | 最经典 baseline | ✅ 已集成，训练中 |
-| Flow Matching Policy (Euler-10) | 流匹配 | 10 固定 | 无记忆的 Flow Policy 直接前身 | ⬜ 待复现 |
-| Consistency Policy (3步) | 蒸馏加速 | 3 固定 | 一致性蒸馏快速推理 | ⬜ 待复现 |
-| ProbeFlow | 自适应流匹配 | 2-10 自适应 | 几何曲率启发式，最直接竞争者 | ⬜ 待复现 |
-| ACT | Transformer | N/A | Action Chunking Transformer | ⬜ 待复现 |
+| Diffusion Policy (DDIM-10) | 扩散 | 100 固定 | 最经典 baseline | ✅ 已集成 |
+| Flow Matching Policy (Euler-10) | 流匹配 | 10 固定 | 无记忆的 Flow Policy 直接前身 | ✅ 已集成 |
+| ACT | Transformer | 1 | Action Chunking Transformer | ✅ 已集成 |
 
 ---
 
@@ -394,8 +392,6 @@ python benchmark_scripts/download_libero_datasets.py
 ───────────────────│────────────────│───────────────│─────────────│────────────│────────
 Diffusion Policy   │  xx.x ± x.x   │  xx.x ± x.x  │ xx.x ± x.x │ xx.x ± x.x │  xxms
 Flow Matching      │  xx.x ± x.x   │  xx.x ± x.x  │ xx.x ± x.x │ xx.x ± x.x │  xxms
-Consistency Policy │  xx.x ± x.x   │  xx.x ± x.x  │ xx.x ± x.x │ xx.x ± x.x │  xxms
-ProbeFlow          │  xx.x ± x.x   │  xx.x ± x.x  │ xx.x ± x.x │ xx.x ± x.x │  xxms
 ACT                │  xx.x ± x.x   │  xx.x ± x.x  │ xx.x ± x.x │ xx.x ± x.x │  xxms
 ───────────────────│────────────────│───────────────│─────────────│────────────│────────
 MemFlow (ours)     │  xx.x ± x.x   │  xx.x ± x.x  │ xx.x ± x.x │ xx.x ± x.x │  xxms
@@ -589,11 +585,9 @@ C4 的核心主张是"记忆同时解决质量（C1）和效率（C2）两个问
 ```
 方法                         │ LIBERO-Spatial │ LIBERO-Object │ LIBERO-Goal │ LIBERO-100 │ 推理延迟
 ─────────────────────────────│────────────────│───────────────│─────────────│────────────│────────
-Diffusion Policy (DDIM-10)   │     ~73%       │     ~75%      │    ~70%     │    ~60%    │  ~17ms
+Diffusion Policy (100步)     │     ~73%       │     ~75%      │    ~70%     │    ~60%    │  ~50ms
 Flow Matching Policy (10步)  │     ~75%       │     ~77%      │    ~72%     │    ~62%    │  ~17ms
-Consistency Policy (3步)     │     ~68%       │     ~70%      │    ~65%     │    ~55%    │   ~6ms
 ACT                          │     ~74%       │     ~76%      │    ~71%     │    ~61%    │   ~5ms
-ProbeFlow                    │     ~76%       │     ~78%      │    ~73%     │    ~63%    │  ~10ms
 ─────────────────────────────│────────────────│───────────────│─────────────│────────────│────────
 MemFlow 记忆+固定8步          │     ~81%       │     ~83%      │    ~80%     │    ~72%    │  ~16ms
 MemFlow 记忆+自适应（默认）   │     ~80%       │     ~82%      │    ~79%     │    ~71%    │  ~11ms

@@ -4,10 +4,10 @@
 
 用法:
     # 仅显示实时窗口
-    python eval_vis.py --model_path /home/ydj/article/LIBERO/experiments/LIBERO_SPATIAL/Multitask/DiffusionPolicy_seed0/run_001/multitask_model_ep0.pth --task_id 1
+    python eval_vis.py --model_path /home/ydj/article/LIBERO/checkpoints/multitask_model_ep815.pth --task_id 1
 
     # 显示实时窗口并保存视频
-    python eval_vis.py --model_path /home/ydj/article/LIBERO/checkpoints/multitask_model_ep815.pth --task_id 1 --save_video
+    python eval_vis.py --model_path /home/ydj/article/LIBERO/experiments/LIBERO_SPATIAL/Multitask/FlowMatchingPolicy_seed0/run_001/multitask_model_ep25.pth --task_id 1 --save_video
 
     # 保存视频到指定目录
     python eval_vis.py --model_path experiments/.../model.pth --task_id 1 --save_video --video_dir my_videos
@@ -37,6 +37,16 @@ try:
     from diffusion_policy.diffusion_policy import DiffusionPolicy  # noqa
 except Exception as e:
     print(f"Warning: Could not load DiffusionPolicy: {e}")
+
+try:
+    from flow_matching.flow_matching_policy import FlowMatchingPolicy  # noqa
+except Exception as e:
+    print(f"Warning: Could not load FlowMatchingPolicy: {e}")
+
+try:
+    from act.act_policy import ACTPolicy  # noqa
+except Exception as e:
+    print(f"Warning: Could not load ACTPolicy: {e}")
 
 
 def parse_args():

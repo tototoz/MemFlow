@@ -1,0 +1,26 @@
+policy_type: ACTPolicy
+
+# ACT parameters
+horizon: 8  # Action chunk length
+n_obs_steps: 2  # Number of observation frames as condition
+latent_dim: 32  # CVAE latent dimension
+kl_weight: 10.0  # KL divergence weight in loss
+temporal_agg: true  # Use temporal aggregation during inference
+ema_alpha: 0.5  # EMA decay for temporal aggregation
+
+# Observation encoding
+image_embed_size: 64
+text_embed_size: 64
+obs_hidden_size: 256
+
+# Transformer architecture
+hidden_dim: 256
+nhead: 8
+encoder_n_layers: 4  # CVAE encoder layers
+decoder_n_layers: 7  # CVAE decoder layers
+
+defaults:
+    - data_augmentation@color_aug: batch_wise_img_color_jitter_group_aug.yaml
+    - data_augmentation@translation_aug: translation_aug.yaml
+    - image_encoder: resnet_encoder.yaml
+    - language_encoder: mlp_encoder.yaml

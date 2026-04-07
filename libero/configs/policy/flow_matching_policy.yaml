@@ -1,0 +1,24 @@
+policy_type: FlowMatchingPolicy
+
+# Flow Matching parameters
+num_integration_steps: 10  # Number of Euler integration steps (fewer than diffusion)
+horizon: 8  # Must be power of 2 or compatible with downsampling
+n_obs_steps: 2
+
+# Observation encoding
+image_embed_size: 64
+text_embed_size: 64
+obs_hidden_size: 256
+
+# UNet architecture for vector field prediction
+time_embed_dim: 256
+down_dims: [128, 256, 512]
+kernel_size: 3
+n_groups: 8
+cond_predict_scale: false
+
+defaults:
+    - data_augmentation@color_aug: batch_wise_img_color_jitter_group_aug.yaml
+    - data_augmentation@translation_aug: translation_aug.yaml
+    - image_encoder: resnet_encoder.yaml
+    - language_encoder: mlp_encoder.yaml
