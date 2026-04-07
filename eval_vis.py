@@ -7,7 +7,7 @@
     python eval_vis.py --model_path /home/ydj/article/LIBERO/experiments/LIBERO_SPATIAL/Multitask/DiffusionPolicy_seed0/run_001/multitask_model_ep0.pth --task_id 1
 
     # 显示实时窗口并保存视频
-    python eval_vis.py --model_path /home/ydj/article/LIBERO/experiments/LIBERO_SPATIAL/Multitask/DiffusionPolicy_seed0/run_001/multitask_model_ep35.pth --task_id 1 --save_video
+    python eval_vis.py --model_path /home/ydj/article/LIBERO/checkpoints/multitask_model_ep815.pth --task_id 1 --save_video
 
     # 保存视频到指定目录
     python eval_vis.py --model_path experiments/.../model.pth --task_id 1 --save_video --video_dir my_videos
@@ -75,9 +75,11 @@ def main():
         print(f"[info] 覆盖 benchmark: {cfg.benchmark_name} → {args.benchmark}")
         cfg.benchmark_name = args.benchmark
 
-    # 修复旧配置中可能缺失的字段
-    if not hasattr(cfg, "folder") or cfg.folder is None:
-        cfg.folder = get_libero_path("datasets")
+    # 覆盖旧 checkpoint 中训练机器的路径
+    cfg.bert_cache_dir = "/home/ydj/bert"
+
+    # 修复旧配置中训练机器的路径（无条件覆盖，旧 checkpoint 可能含 /robot 路径）
+    cfg.folder = get_libero_path("datasets")
     cfg.bddl_folder = get_libero_path("bddl_files")
     cfg.init_states_folder = get_libero_path("init_states")
 
@@ -98,12 +100,9 @@ def main():
     task_emb = benchmark.get_task_emb(args.task_id)
 
     # 初始化 ObsUtils（raw_obs_to_tensor_obs 依赖此初始化）
-    get_dataset(
-        dataset_path=os.path.join(cfg.folder, benchmark.get_task_demonstration(args.task_id)),
-        obs_modality=cfg.data.obs.modality,
-        initialize_obs_utils=True,
-        seq_len=cfg.data.seq_len,
-    )
+    # 不需要真实数据集文件，只需用 obs spec 初始化即可
+    import robomimic.utils.obs_utils as ObsUtils
+    ObsUtils.initialize_obs_utils_with_obs_specs({"obs": cfg.data.obs.modality})
 
     print(f"\n[info] 任务: {task.language}")
     print(f"[info] 评估 {args.n_eval} 次，使用 MuJoCo 实时窗口\n")
