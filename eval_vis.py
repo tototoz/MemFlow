@@ -85,6 +85,9 @@ def main():
         print(f"[info] 覆盖 benchmark: {cfg.benchmark_name} → {args.benchmark}")
         cfg.benchmark_name = args.benchmark
 
+    # 覆盖旧 checkpoint 中训练机器的路径
+    cfg.bert_cache_dir = "/home/ydj/bert"
+
 
     # 修复旧配置中训练机器的路径（无条件覆盖，旧 checkpoint 可能含 /robot 路径）
     cfg.folder = get_libero_path("datasets")
