@@ -13,17 +13,17 @@ seed: 10000
 use_wandb: false
 wandb_project: "lifelong learning"
 
-folder: /robot/bionic-control-data/zhq-disk/libero/datasets 
-bddl_folder: /root/code/LIBERO/libero/libero/./bddl_files 
-init_states_folder: /root/code/LIBERO/libero/libero/./init_files 
-experiment_dir: /robot/bionic-control-data/zhq-disk/libero/spatial_seed0 
-bert_cache_dir: "/robot/bionic-control-data/zhq-disk/libero/bert"
+# folder: /robot/bionic-control-data/zhq-disk/libero/datasets 
+# bddl_folder: /root/code/LIBERO/libero/libero/./bddl_files 
+# init_states_folder: /root/code/LIBERO/libero/libero/./init_files 
+# experiment_dir: /robot/bionic-control-data/zhq-disk/libero/spatial_seed0 
+# bert_cache_dir: "/robot/bionic-control-data/zhq-disk/libero/bert"
 
-# folder: /home/ydj/datasets
-# bddl_folder: /home/ydj/article/LIBERO/libero/libero/./bddl_files 
-# init_states_folder: /home/ydj/article/LIBERO/libero/libero/./init_files 
-# experiment_dir: null
-# bert_cache_dir: "/home/ydj/bert"
+folder: /home/ydj/datasets
+bddl_folder: /home/ydj/article/LIBERO/libero/libero/./bddl_files 
+init_states_folder: /home/ydj/article/LIBERO/libero/libero/./init_files 
+experiment_dir: null
+bert_cache_dir: "/home/ydj/bert"
 
 
 
