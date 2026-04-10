@@ -3,7 +3,7 @@ eval: true
 batch_size: 64
 num_workers: 4
 n_eval: 20
-eval_every: 5
+eval_every: 10
 max_steps: 600
 use_mp: true
 num_procs: 20

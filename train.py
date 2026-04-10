@@ -4,6 +4,8 @@ Training script for LIBERO benchmark with different policies
 Usage:
     python train.py policy=bc_transformer_policy benchmark_name=LIBERO_SPATIAL seed=42
     python train.py policy=diffusion_policy benchmark_name=LIBERO_SPATIAL seed=42
+    python train.py policy=memflow_policy benchmark_name=LIBERO_SPATIAL seed=42
+    python train.py policy=memflow_policy benchmark_name=LIBERO_SPATIAL seed=42
 """
 
 import os
@@ -19,7 +21,6 @@ from pathlib import Path
 import hydra
 import numpy as np
 import wandb
-import yaml
 import torch
 import torch.nn as nn
 from easydict import EasyDict
@@ -42,11 +43,26 @@ from libero.lifelong.utils import (
     get_task_embs,
 )
 
-# Register DiffusionPolicy AFTER libero is fully loaded (avoids circular import)
+# Register custom policies AFTER libero is fully loaded (avoids circular import)
 try:
     from diffusion_policy.diffusion_policy import DiffusionPolicy  # noqa: F401
 except Exception as e:
     print(f"Warning: Could not load DiffusionPolicy: {e}")
+
+try:
+    from flow_matching.flow_matching_policy import FlowMatchingPolicy  # noqa: F401
+except Exception as e:
+    print(f"Warning: Could not load FlowMatchingPolicy: {e}")
+
+try:
+    from memflow.memflow_policy import MemFlowPolicy  # noqa: F401
+except Exception as e:
+    print(f"Warning: Could not load MemFlowPolicy: {e}")
+
+try:
+    from act.act_policy import ACTPolicy  # noqa: F401
+except Exception as e:
+    print(f"Warning: Could not load ACTPolicy: {e}")
 
 
 def print_available_policies():
@@ -59,11 +75,38 @@ def print_available_policies():
     print("="*70 + "\n")
 
 
+def download_dinov2_if_needed(cfg):
+    """Download DINOv2 model if local path is specified but doesn't exist"""
+    if cfg.policy.get("use_episodic_memory", False) and cfg.policy.get("use_dinov2_events", True):
+        model_name = cfg.policy.get("dinov2_model", "dinov2-small")
+        local_path = cfg.policy.get("dinov2_local_path", None)
+
+        if local_path and not os.path.exists(local_path):
+            print(f"\n[info] DINOv2 local path specified but not found: {local_path}")
+            print(f"[info] Downloading DINOv2 to: {local_path}")
+            os.makedirs(local_path, exist_ok=True)
+
+            from transformers import AutoModel
+            # 确保使用连字符格式
+            hf_model_name = model_name.replace("_", "-")
+            model = AutoModel.from_pretrained(f"facebook/{hf_model_name}")
+            model.save_pretrained(local_path)
+            print(f"[info] DINOv2 downloaded successfully!\n")
+        elif local_path and os.path.exists(local_path):
+            print(f"\n[info] DINOv2 will be loaded from local path: {local_path}\n")
+        elif local_path is None:
+            print(f"\n[info] DINOv2 will be downloaded from Hugging Face on first use")
+            print(f"[info] To pre-download, run: python scripts/download_dinov2.py\n")
+
+
 @hydra.main(config_path="libero/configs", config_name="config", version_base=None)
 def main(hydra_cfg):
-    # Convert to EasyDict
-    yaml_config = OmegaConf.to_yaml(hydra_cfg)
-    cfg = EasyDict(yaml.safe_load(yaml_config))
+    # Convert to EasyDict - use to_container to preserve command-line overrides
+    cfg = EasyDict(OmegaConf.to_container(hydra_cfg, resolve=True))
+
+    # DEBUG: 打印 experiment_dir 来源
+    print(f"\n[DEBUG] experiment_dir = {cfg.get('experiment_dir', 'NOT SET')}")
+    print(f"[DEBUG] hydra_cfg.experiment_dir = {hydra_cfg.get('experiment_dir', 'NOT SET')}")
 
     num_gpus = cfg.get("num_gpus", 1)
     available = torch.cuda.device_count()
@@ -80,6 +123,9 @@ def main(hydra_cfg):
     # Print config
     pp = pprint.PrettyPrinter(indent=2)
     pp.pprint(cfg)
+
+    # Download DINOv2 if needed for MemFlow policy
+    download_dinov2_if_needed(cfg)
 
     # Control seed
     control_seed(cfg.seed)

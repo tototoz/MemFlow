@@ -1,0 +1,56 @@
+policy_type: MemFlowPolicy
+
+# Flow Matching parameters
+num_integration_steps: 10  # Number of Euler integration steps
+horizon: 8  # Must be power of 2 or compatible with downsampling
+n_obs_steps: 2
+
+# Observation encoding
+image_embed_size: 64
+text_embed_size: 64
+obs_hidden_size: 256
+
+# UNet architecture for vector field prediction
+time_embed_dim: 256
+down_dims: [128, 256, 512]
+kernel_size: 3
+n_groups: 8
+cond_predict_scale: false
+
+# ============================================================
+# Memory Module Toggles
+# ============================================================
+# Set to true to enable each memory module
+use_working_memory: true   # L1: Causal Transformer for short-term coherence
+use_episodic_memory: true   # L2: Event-driven sparse memory for task progress
+
+# Memory dimensions
+memory_dim: 256  # Output dimension for both memory modules
+
+# -----------------------------------------------------------
+# L1 Working Memory (Causal Transformer)
+# -----------------------------------------------------------
+working_memory_len: 16           # Number of recent steps to remember (~1.6s @ 10Hz)
+working_memory_hidden_dim: 256   # Transformer hidden dimension
+working_memory_n_heads: 4        # Number of attention heads
+working_memory_n_layers: 2       # Number of transformer layers
+
+# -----------------------------------------------------------
+# L2 Episodic Memory (Event-driven Sparse Memory)
+# -----------------------------------------------------------
+use_dinov2_events: true          # Use DINOv2 for event detection (recommended)
+dinov2_model: dinov2-small       # DINOv2 model: dinov2-small (384d) or dinov2-base (768d)
+dinov2_local_path: /home/ydj/article/LIBERO/dinov2_models/dinov2-small        # 本地 DINOv2 模型路径，设为 null 则从 Hugging Face 下载
+                                 # 设为 null 则从 Hugging Face 下载
+                                 # 预下载脚本: python scripts/download_dinov2.py
+
+episodic_memory_hidden_dim: 256  # Hidden dimension for cross-attention
+episodic_memory_n_heads: 4       # Number of cross-attention heads
+max_episodic_events: 32          # Maximum number of events to store
+event_threshold_percentile: 95   # Percentile for event detection (top 5% distances)
+
+defaults:
+    - data_augmentation@color_aug: batch_wise_img_color_jitter_group_aug.yaml
+    - data_augmentation@translation_aug: translation_aug.yaml
+    - image_encoder: resnet_encoder.yaml
+    - language_encoder: mlp_encoder.yaml

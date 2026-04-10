@@ -4,7 +4,7 @@
 
 用法:
     # 仅显示实时窗口
-    python eval_vis.py --model_path /home/ydj/article/LIBERO/experiments/LIBERO_SPATIAL/Multitask/ACTPolicy_seed0/run_001/multitask_model_ep35.pth --task_id 1
+    python eval_vis.py --model_path /home/ydj/article/LIBERO/experiments/LIBERO_SPATIAL/Multitask/MemFlowPolicy_seed0/run_001/multitask_model_ep5.pth --task_id 1
 
     # 显示实时窗口并保存视频
     python eval_vis.py --model_path /home/ydj/article/LIBERO/experiments/LIBERO_SPATIAL/Multitask/FlowMatchingPolicy_seed0/run_001/multitask_model_ep25.pth --task_id 1 --save_video
@@ -42,6 +42,11 @@ try:
     from flow_matching.flow_matching_policy import FlowMatchingPolicy  # noqa
 except Exception as e:
     print(f"Warning: Could not load FlowMatchingPolicy: {e}")
+
+try:
+    from memflow.memflow_policy import MemFlowPolicy  # noqa
+except Exception as e:
+    print(f"Warning: Could not load MemFlowPolicy: {e}")
 
 try:
     from act.act_policy import ACTPolicy  # noqa

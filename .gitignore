@@ -18,3 +18,7 @@ libero.egg-info/
 .vscode/
 xhost
 CLAUDE.md
+
+libero/libero/assets
+
+dinov2_models
