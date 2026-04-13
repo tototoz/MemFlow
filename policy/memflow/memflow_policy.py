@@ -10,6 +10,175 @@ Key design: Training and inference use the SAME memory update logic.
 Reference:
 - Flow Matching for Generative Modeling (Lipman et al., ICLR 2023)
 - MemFlow: Memory-Augmented Flow Policy for Long-Horizon Manipulation
+
+════════════════════════════════════════════════════════════════════════
+配置参数（memflow_policy.yaml）
+════════════════════════════════════════════════════════════════════════
+  n_obs_steps   = 17   观测历史帧数（= working_memory_len + 1）
+  horizon       = 8    预测动作步数
+  memory_len    = 16   Working Memory 最大历史长度
+  max_events    = 32   Episodic Memory 最多存储的关键帧数
+
+════════════════════════════════════════════════════════════════════════
+训练数据流  forward()
+════════════════════════════════════════════════════════════════════════
+
+  数据加载（SequenceDataset, seq_len=24）
+  ┌─────────────────────────────────────────────────────────────┐
+  │ data["obs"]["agentview_rgb"]   (B, 17, 3, 128, 128)         │
+  │ data["obs"]["eye_in_hand_rgb"] (B, 17, 3, 128, 128)         │
+  │ data["obs"]["joint_states"]    (B, 17, 7)                   │
+  │ data["obs"]["gripper_states"]  (B, 17, 2)                   │
+  │ data["task_emb"]               (B, 768)  ← BERT 句子嵌入    │
+  │ data["actions"]                (B, 24, 7)                   │
+  └─────────────────────────────────────────────────────────────┘
+
+  ── 阶段1：观测编码  encode_obs_sequence() ──────────────────────
+  agentview_rgb  (B,17,3,H,W) ─→ ResNet+语言调制 ─→ (B,17, 64)  ┐
+  eye_in_hand    (B,17,3,H,W) ─→ ResNet+语言调制 ─→ (B,17, 64)  ├─ cat
+  joint+gripper  (B,17, 9)    ─→ MLP            ─→ (B,17, 16)  ┤
+  task_emb       (B,768)      ─→ MLP            ─→ (B,  64)    ┘
+                                                 expand (B,17, 64)
+                                                        ↓
+                                               concat → (B, 17, 208)
+                                                        ↓
+                                               2层 LSTM（隐层256）
+                                                        ↓
+                                           obs_feature_seq (B, 17, 256)
+
+  原理：LSTM 对 17 帧做时序建模，每帧同时融合了图像、本体感知和
+        任务语言信息。最后一帧输出即"当前时刻的综合观测特征"。
+
+  ── 阶段2：DINOv2 特征提取（L2 专用）───────────────────────────
+  agentview_rgb (B,17,3,128,128)
+         ↓ resize → 224×224
+    冻结 DINOv2-small（不参与梯度）
+         ↓ 取 [CLS] token
+  dino_feature_seq (B, 17, 384)
+
+  原理：DINOv2 是视觉语义特征，对场景状态变化更敏感（如物体被
+        抓起、放下），比 ResNet 特征更适合检测"关键事件"。冻结
+        是为了保证事件检测的稳定性，不随策略训练漂移。
+
+  ── 阶段3：构建记忆条件向量  compute_memory_condition() ─────────
+
+  obs_feature_seq (B, 17, 256)
+         ├─ current_obs = obs_feature_seq[:, -1, :]      → (B, 256)
+         │
+         ├─ [L1] Working Memory（Causal Transformer）
+         │    obs_for_mem  = obs_feature_seq[:, -17:-1, :] → (B, 16, 256)
+         │    action_for_mem = actions[:, :16, :]           → (B, 16,   7)
+         │    交错排列 tokens：[obs0, a0, obs1, a1, ..., obs15, a15]
+         │                                                 → (B, 32, 256)
+         │    因果 Transformer（2层 4头）
+         │    取最后 token（a15 的表示）                    → (B, 256)
+         │
+         │    原理：Causal mask 保证 obs[k] 只能看到它之前的
+         │    (obs,action) 对，a[k] 能看到 obs[k]。最后 token
+         │    汇聚了完整的短期历史，捕捉"正在做什么动作、
+         │    向哪个方向运动"等短程连贯性。
+         │
+         └─ [L2] Episodic Memory（Cross-Attention）
+              build_episodic_memory_bank(dino_feature_seq)：
+                计算相邻帧距离 (16个) → 取第95百分位为阈值
+                超阈值的帧 = 关键事件 → memory_bank (B, N, 384)
+              query = Linear(384→256)(dino_feature_seq[:,-1,:]) → (B,1,256)
+              key   = Linear(384→256)(memory_bank)              → (B,N,256)
+              value = Linear(384→256)(memory_bank)              → (B,N,256)
+              CrossAttention                                     → (B, 256)
+
+              原理：事件检测找出场景发生显著变化的帧（物体状态
+              切换）并存入 bank。Cross-Attention 让当前帧去"查询"
+              历史关键事件，获得"任务进行到哪一步了"的中程记忆。
+
+  cat([current_obs, working_mem, episodic_mem]) → cond (B, 768)
+
+  ── 阶段4：Flow Matching 损失 ────────────────────────────────────
+  target_action = actions[:, 16:24, :]          (B, 8, 7)
+  t ~ Uniform(0,1)                              (B,)
+  x_0 ~ N(0, I)                                 (B, 8, 7)
+  x_t = (1-t)·x_0 + t·target_action            (B, 8, 7)  ← 线性插值
+  v_target = target_action - x_0                (B, 8, 7)  ← 目标速度场
+
+  ConditionalUNet1D(x_t, t, global_cond=cond)  → v_pred   (B, 8, 7)
+  loss = MSE(v_pred, v_target)
+
+  原理：Flow Matching 在 x_0（噪声）到 target_action（真实动作）
+  之间建立直线轨迹，v_target 是该直线的方向。UNet 学习在任意
+  插值点 x_t 预测这个方向，推理时用 Euler 积分沿预测方向从
+  x_0 积分到 x_1 得到动作。
+
+════════════════════════════════════════════════════════════════════════
+推理数据流  get_action()    每步环境返回 1 帧
+════════════════════════════════════════════════════════════════════════
+
+  实例缓冲区（跨步持久）：
+    obs_history[img_name]   deque(maxlen=17)  ← 原始图像帧
+    obs_feature_history     deque(maxlen=16)  ← LSTM 编码后特征
+    action_history          deque(maxlen=16)  ← 已执行的动作
+    episodic_memory_bank    (B, N, 384)       ← 累积关键帧，跨整个 episode
+
+  每步推理流程：
+
+  step t  输入: obs (B,1,3,H,W),  task_emb (B,768)
+    │
+    ├─ 1. obs_history.append(obs)
+    │      不足17帧时：[obs_first]*(17-t-1) + [obs_0..obs_t]  ← 重复第一帧
+    │      拼接成 history_data["obs"][img_name] (B,17,3,H,W)
+    │
+    ├─ 2. encode_obs_sequence(history_data) → obs_feature_seq (B,17,256)
+    │      obs_feature_history.append(obs_feature_seq[:,-1,:])
+    │
+    ├─ 3. 提取当前帧 DINOv2 特征 current_dino (B,384)
+    │      detect_event_single(current_dino, prev_dino)：
+    │        用 distance_history 滚动100帧的第95百分位自适应阈值
+    │        若 is_event → episodic_memory_bank.append(current_dino)
+    │                       超出 max_events=32 时 FIFO 淘汰最旧
+    │
+    ├─ 4. 构建 Working Memory 输入：
+    │      obs_feature_seq_for_memory: 从 obs_feature_history padding 到 16帧
+    │      action_seq: stack(action_history) 或 None（step 0 时）
+    │
+    ├─ 5. compute_memory_condition() → cond (B,768)
+    │      （与训练完全相同的函数，L2 此时用实例变量 episodic_memory_bank）
+    │
+    ├─ 6. Euler 积分（10步）：
+    │      x ~ N(0,I)  (B,8,7)
+    │      for i in 0..9:
+    │          v = UNet(x, t=i/10, cond)
+    │          x = x + v * 0.1
+    │
+    └─ 7. action = x[:,0,:]  ← 只执行第一步
+           action_history.append(action)
+           return action  (B,7)
+
+  原理（只执行第一步）：UNet 预测整个 horizon=8 步的动作序列，
+  但每步只执行第一个动作，下一步再重新规划。这种"滚动预测"
+  让策略能持续融入最新观测，避免开环累积误差。
+
+════════════════════════════════════════════════════════════════════════
+训练/推理对齐设计
+════════════════════════════════════════════════════════════════════════
+
+  n_obs_steps=17 = working_memory_len+1 的意义：
+    训练时 action_seq 固定为 16 个真实动作，Working Memory 始终
+    看到完整的 T=16 对；推理时从 T=0 增长到 T=16，与训练分布
+    最终对齐。Episodic Memory 也在 17 帧窗口内检测事件，同样
+    使用百分位阈值，与推理时的自适应阈值机制一致。
+
+  obs/action 对齐规则（compute_memory_condition 内部）：
+    obs[k] 与 a[k] 配对，表示"执行动作 a[k] 时所处的状态"
+    obs_for_memory = obs_feature_seq[:, -(T+1):-1, :]  ← 排除当前帧
+    action_for_memory = action_seq[:, -T:, :]
+
+  张量维度速查：
+    obs_feature_seq         (B, 17, 256)
+    dino_feature_seq        (B, 17, 384)  训练 / (B,  1, 384)  推理
+    memory_bank             (B,  N, 384)  N≤16 训练 / N≤32 推理
+    working_mem             (B, 256)
+    episodic_mem            (B, 256)
+    cond                    (B, 768)      = 256+256+256
+    v_pred / v_target       (B,   8,   7)
 """
 
 import os
@@ -748,15 +917,14 @@ class MemFlowPolicy(BasePolicy):
         if self.use_working_memory:
             if action_seq is not None and action_seq.shape[1] > 0:
                 T = min(action_seq.shape[1], self.working_memory.memory_len)
-                obs_for_memory = obs_feature_seq[:, -T:, :]
+                # obs[k] paired with a[k]: exclude current obs (last) and take the T obs before it
+                obs_for_memory = obs_feature_seq[:, -(T + 1):-1, :]
                 action_for_memory = action_seq[:, -T:, :]
                 working_mem = self.working_memory(obs_for_memory, action_for_memory)
             else:
-                # 推理时没有历史动作：用当前 obs 构造虚拟历史
-                # 这样和训练时的分布更接近（而不是用零向量）
-                T = min(2, self.working_memory.memory_len)  # 用 2 步虚拟历史
+                # No action history yet: use current obs repeated with zero actions as warm-up
+                T = min(2, self.working_memory.memory_len)
                 obs_for_memory = current_obs_feature.unsqueeze(1).expand(-1, T, -1)
-                # 用零动作（或当前 obs 对应的典型动作）
                 dummy_actions = torch.zeros(B, T, self.action_dim, device=current_obs_feature.device)
                 working_mem = self.working_memory(obs_for_memory, dummy_actions)
             cond.append(working_mem)
@@ -787,12 +955,13 @@ class MemFlowPolicy(BasePolicy):
 
     def forward(self, data, train_mode=True):
         """
-        Training forward: Simulates inference-time step-by-step processing.
+        Training forward: vectorized single-step flow matching.
 
-        This ensures training and inference use the SAME memory update logic:
-        - Working Memory: accumulates obs_feature and action history step by step
-        - Episodic Memory: incrementally builds event bank via single-frame detection
-        - Scheduled sampling for action history (mix GT and predicted actions)
+        Memory is built from the full observation history (n_obs_steps frames):
+        - Working Memory: uses the (n_obs_steps-1) previous (obs, action) pairs
+        - Episodic Memory: uses build_episodic_memory_bank (percentile threshold),
+          consistent with the inference-time accumulation logic
+        - No .detach() so gradients flow through all encoders and memory modules
         """
         _ = train_mode
         data = self.preprocess_input(data, train_mode=True)
@@ -800,136 +969,40 @@ class MemFlowPolicy(BasePolicy):
         B = data["obs"][list(self.image_encoders.keys())[0]].shape[0]
         device = data["obs"][list(self.image_encoders.keys())[0]].device
 
-        # Encode full observation sequence
-        obs_feature_seq = self.encode_obs_sequence(data)  # (B, T, final_obs_dim)
+        # Encode full obs sequence — gradients flow normally (no detach)
+        obs_feature_seq = self.encode_obs_sequence(data)  # (B, T_obs, final_obs_dim)
 
         # Extract DINOv2 features for the full sequence
-        dino_feature_seq = self.extract_dino_features_from_data(data)  # (B, T, dino_dim)
+        dino_feature_seq = self.extract_dino_features_from_data(data)  # (B, T_obs, D) or None
 
-        T_obs = obs_feature_seq.shape[1]
-
-        # Get all actions
         actions = data["actions"]  # (B, T_action, action_dim)
 
-        # Initialize history buffers (simulating inference)
-        obs_feature_history = []  # For Working Memory: list of (B, D)
-        action_history = []  # For Working Memory: list of (B, action_dim)
-        episodic_memory_bank = None  # For Episodic Memory: (B, N, D)
-        prev_dino_feature = None  # For event detection
+        # Action history: the (n_obs_steps-1) actions preceding the current step
+        n_history = self.n_obs_steps - 1
+        action_seq = actions[:, :n_history, :] if n_history > 0 else None
 
-        # Scheduled sampling: probability of using GT action
-        # During training, we use GT actions most of the time but occasionally
-        # would need predicted actions. For simplicity, we use GT actions here
-        # but the memory accumulation pattern matches inference.
-        teacher_forcing_ratio = 1.0  # Always use GT during training for stability
+        # Build episodic memory bank from the full DINOv2 sequence.
+        # build_episodic_memory_bank uses percentile-based event detection —
+        # the same logic used in inference — so training/inference are consistent.
+        saved_memory_bank = self.episodic_memory_bank
+        if self.use_episodic_memory and dino_feature_seq is not None:
+            self.episodic_memory_bank = self.build_episodic_memory_bank(dino_feature_seq)
 
-        # Collect predictions and targets for loss
-        all_v_preds = []
-        all_v_targets = []
+        # Compute memory-augmented condition at the last obs step
+        cond = self.compute_memory_condition(obs_feature_seq, action_seq, dino_feature_seq)
 
-        # Memory lengths
-        memory_len = self.working_memory.memory_len if self.use_working_memory else 1
-        max_events = self.episodic_memory.max_events if self.use_episodic_memory else 32
+        # Restore (do not pollute instance state during training)
+        self.episodic_memory_bank = saved_memory_bank
 
-        # Start from the first prediction point
-        start_idx = self.n_obs_steps - 1
+        # Flow Matching loss: one random time sample per batch item
+        target_action = actions[:, n_history:n_history + self.horizon, :]
+        time_t = torch.rand(B, device=device)
+        x_0 = torch.randn_like(target_action)
+        x_t = (1 - time_t.view(-1, 1, 1)) * x_0 + time_t.view(-1, 1, 1) * target_action
+        v_target = target_action - x_0
+        v_pred = self.vector_field_net(x_t, time_t, global_cond=cond)
 
-        for t in range(start_idx, min(T_obs, actions.shape[1] - self.horizon + 1)):
-            # ========== Step 1: Build obs feature history ==========
-            # Accumulate current step's obs feature (simulating inference)
-            obs_feature_history.append(obs_feature_seq[:, t, :].detach())  # Detach to prevent backprop through history
-
-            # Build obs_feature_seq for memory (pad if needed, like inference)
-            if len(obs_feature_history) < memory_len:
-                padded_history = [obs_feature_history[0]] * (memory_len - len(obs_feature_history)) + obs_feature_history
-            else:
-                padded_history = obs_feature_history[-memory_len:]
-            obs_feature_seq_for_memory = torch.stack(padded_history, dim=1)  # (B, T_mem, D)
-
-            # ========== Step 2: Build action history ==========
-            # Accumulate previous actions (simulating inference)
-            if t > start_idx:
-                # In training, use GT action (scheduled sampling could be added)
-                if teacher_forcing_ratio >= 1.0:
-                    action_history.append(actions[:, t - 1, :])
-                # For scheduled sampling, could mix with predicted actions here
-
-            # Build action sequence for Working Memory
-            if len(action_history) > 0:
-                if len(action_history) < memory_len:
-                    # Pad with first action (like inference pads with first obs)
-                    padded_actions = [action_history[0]] * (memory_len - len(action_history)) + action_history
-                else:
-                    padded_actions = action_history[-memory_len:]
-                action_seq = torch.stack(padded_actions, dim=1)  # (B, T_mem, action_dim)
-            else:
-                action_seq = None
-
-            # ========== Step 3: Update Episodic Memory ==========
-            current_dino = dino_feature_seq[:, t, :]  # (B, D)
-
-            if self.use_episodic_memory and self.dino_extractor is not None:
-                # Detect event using single-frame comparison (same as inference)
-                is_event = False
-                if prev_dino_feature is not None:
-                    distance = torch.norm(current_dino - prev_dino_feature, dim=-1).mean().item()
-                    # Use fixed threshold or adaptive (simplified here)
-                    # In inference, this is computed from history
-                    is_event = distance > 0.1  # Simple threshold
-                else:
-                    is_event = True  # First frame is always an event
-
-                if is_event:
-                    if episodic_memory_bank is None:
-                        episodic_memory_bank = current_dino.unsqueeze(1)  # (B, 1, D)
-                    elif episodic_memory_bank.shape[1] < max_events:
-                        episodic_memory_bank = torch.cat([
-                            episodic_memory_bank,
-                            current_dino.unsqueeze(1)
-                        ], dim=1)
-                    else:
-                        # FIFO: remove oldest, add newest
-                        episodic_memory_bank = torch.cat([
-                            episodic_memory_bank[:, 1:, :],
-                            current_dino.unsqueeze(1)
-                        ], dim=1)
-
-                prev_dino_feature = current_dino.detach()
-
-            # ========== Step 4: Compute memory condition ==========
-            # Build dino feature sequence for condition
-            dino_feature_seq_for_cond = current_dino.unsqueeze(1)  # (B, 1, D)
-
-            # Override the episodic memory bank temporarily for this step
-            saved_memory_bank = self.episodic_memory_bank
-            self.episodic_memory_bank = episodic_memory_bank
-
-            # Compute condition (this will use the accumulated episodic memory)
-            cond = self.compute_memory_condition(
-                obs_feature_seq_for_memory, action_seq, dino_feature_seq_for_cond
-            )
-
-            # Restore
-            self.episodic_memory_bank = saved_memory_bank
-
-            # ========== Step 5: Flow Matching prediction ==========
-            target_action = actions[:, t:t + self.horizon, :]
-
-            # Random time for flow matching
-            time_t = torch.rand(B, device=device)
-            x_0 = torch.randn_like(target_action)
-            x_t = (1 - time_t.view(-1, 1, 1)) * x_0 + time_t.view(-1, 1, 1) * target_action
-            v_target = target_action - x_0
-            v_pred = self.vector_field_net(x_t, time_t, global_cond=cond)
-
-            all_v_preds.append(v_pred)
-            all_v_targets.append(v_target)
-
-        # Stack all predictions
-        v_preds = torch.stack(all_v_preds, dim=0)  # (num_steps, B, horizon, action_dim)
-        v_targets = torch.stack(all_v_targets, dim=0)
-
-        return {"v_target": v_targets, "v_pred": v_preds}
+        return {"v_target": v_target, "v_pred": v_pred}
 
     def compute_loss(self, data, reduction="mean"):
         output = self.forward(data, train_mode=True)
@@ -998,6 +1071,11 @@ class MemFlowPolicy(BasePolicy):
                     history_list = [history_list[0]] * pad_len + history_list
                 history_data["obs"][img_name] = torch.cat(history_list, dim=1)
 
+            # Copy low-dim observations (joint_states, gripper_states) - they don't need history
+            for key in data["obs"].keys():
+                if key not in self.image_encoders:
+                    history_data["obs"][key] = data["obs"][key]
+
             # 3. Encode observation sequence
             obs_feature_seq = self.encode_obs_sequence(history_data)  # (B, T, final_obs_dim)
 
@@ -1034,19 +1112,10 @@ class MemFlowPolicy(BasePolicy):
                 dino_feature_seq_for_memory = current_dino.unsqueeze(1)  # (B, 1, D)
 
             # 8. Compute memory condition
-            if self.use_working_memory:
-                # Use only the part of obs history aligned with action history
-                if action_seq is not None:
-                    T_actions = action_seq.shape[1]
-                    obs_for_memory = obs_feature_seq_for_memory[:, -T_actions:, :]
-                else:
-                    # No action history yet, pass None to signal no history
-                    obs_for_memory = obs_feature_seq_for_memory
-            else:
-                obs_for_memory = obs_feature_seq
-
+            # obs_feature_seq_for_memory[-1] is the current obs; compute_memory_condition
+            # will internally use [-(T+1):-1] to pair obs with actions correctly.
             cond = self.compute_memory_condition(
-                obs_for_memory, action_seq, dino_feature_seq_for_memory
+                obs_feature_seq_for_memory, action_seq, dino_feature_seq_for_memory
             )
 
             # 9. Flow Matching: Euler integration

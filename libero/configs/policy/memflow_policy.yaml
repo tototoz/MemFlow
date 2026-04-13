@@ -3,7 +3,9 @@ policy_type: MemFlowPolicy
 # Flow Matching parameters
 num_integration_steps: 10  # Number of Euler integration steps
 horizon: 8  # Must be power of 2 or compatible with downsampling
-n_obs_steps: 2
+# n_obs_steps = working_memory_len + 1 so training always sees a full memory window.
+# Requires data.seq_len >= n_obs_steps + horizon - 1 = 24 → use data=memflow.
+n_obs_steps: 17
 
 # Observation encoding
 image_embed_size: 64

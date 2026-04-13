@@ -4,7 +4,7 @@
 
 用法:
     # 仅显示实时窗口
-    python eval_vis.py --model_path /home/ydj/article/LIBERO/experiments/LIBERO_SPATIAL/Multitask/MemFlowPolicy_seed0/run_001/multitask_model_ep5.pth --task_id 1
+    python eval_vis.py --model_path /home/ydj/article/LIBERO/multitask_model_ep100.pth --task_id 1
 
     # 显示实时窗口并保存视频
     python eval_vis.py --model_path /home/ydj/article/LIBERO/experiments/LIBERO_SPATIAL/Multitask/FlowMatchingPolicy_seed0/run_001/multitask_model_ep25.pth --task_id 1 --save_video
@@ -200,7 +200,7 @@ def main():
             video_writer.release()
             print(f"[info] 视频已保存: {video_path}")
 
-        success = int(done)
+        success = int(info.get("success", False))
         num_success += success
         print(f"  Episode {ep+1}/{args.n_eval}: {'成功' if success else '失败'} ({steps} 步)")
 
