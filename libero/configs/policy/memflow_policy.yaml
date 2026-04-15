@@ -1,11 +1,11 @@
 policy_type: MemFlowPolicy
 
 # Flow Matching parameters
-num_integration_steps: 10  # Number of Euler integration steps
-horizon: 8  # Must be power of 2 or compatible with downsampling
-# n_obs_steps = working_memory_len + 1 so training always sees a full memory window.
-# Requires data.seq_len >= n_obs_steps + horizon - 1 = 24 → use data=memflow.
-n_obs_steps: 17
+num_integration_steps: 10  # Default Euler steps (overridden by Router when enabled)
+horizon: 8  # Predicted action steps (must be power of 2 for UNet downsampling)
+# n_obs_steps defines both the LSTM observation window and the DINOv2 episodic window.
+# Requires data.seq_len >= n_obs_steps + horizon - 1 = 39 → use data=memflow.
+n_obs_steps: 32
 
 # Observation encoding
 image_embed_size: 64
@@ -22,34 +22,36 @@ cond_predict_scale: false
 # ============================================================
 # Memory Module Toggles
 # ============================================================
-# Set to true to enable each memory module
-use_working_memory: true   # L1: Causal Transformer for short-term coherence
-use_episodic_memory: true   # L2: Event-driven sparse memory for task progress
+use_working_memory: true    # L1: Action Memory (GRU) for motion coherence
+use_episodic_memory: true   # L2: DINOv2 cross-attention for task progress
 
 # Memory dimensions
 memory_dim: 256  # Output dimension for both memory modules
 
 # -----------------------------------------------------------
-# L1 Working Memory (Causal Transformer)
+# L1 Action Memory (GRU)
 # -----------------------------------------------------------
-working_memory_len: 16           # Number of recent steps to remember (~1.6s @ 10Hz)
-working_memory_hidden_dim: 256   # Transformer hidden dimension
-working_memory_n_heads: 4        # Number of attention heads
-working_memory_n_layers: 2       # Number of transformer layers
+working_memory_len: 16              # Number of recent actions to remember
+action_memory_hidden_dim: 128       # GRU input projection dimension
+action_memory_gru_dim: 256          # GRU hidden size
 
 # -----------------------------------------------------------
-# L2 Episodic Memory (Event-driven Sparse Memory)
+# L2 Episodic Memory (Full-frame DINOv2 Cross-Attention)
 # -----------------------------------------------------------
-use_dinov2_events: true          # Use DINOv2 for event detection (recommended)
-dinov2_model: dinov2-small       # DINOv2 model: dinov2-small (384d) or dinov2-base (768d)
-dinov2_local_path: /home/ydj/article/LIBERO/dinov2_models/dinov2-small        # 本地 DINOv2 模型路径，设为 null 则从 Hugging Face 下载
-                                 # 设为 null 则从 Hugging Face 下载
-                                 # 预下载脚本: python scripts/download_dinov2.py
+dinov2_model: dinov2-small
+dinov2_local_path: /home/ydj/article/LIBERO/dinov2_models/dinov2-small
+episodic_memory_hidden_dim: 256     # Cross-attention hidden dimension
+episodic_memory_n_heads: 4          # Cross-attention heads
+episodic_memory_window: 32          # DINOv2 feature window size (= n_obs_steps)
 
-episodic_memory_hidden_dim: 256  # Hidden dimension for cross-attention
-episodic_memory_n_heads: 4       # Number of cross-attention heads
-max_episodic_events: 32          # Maximum number of events to store
-event_threshold_percentile: 95   # Percentile for event detection (top 5% distances)
+# -----------------------------------------------------------
+# Adaptive Step Router (C2)
+# -----------------------------------------------------------
+use_adaptive_router: false          # Enable in Phase 2 training
+router_hidden_dims: [256, 128]
+router_step_options: [2, 4, 8, 16]
+router_lambda_speed: 0.1
+router_gumbel_tau: 1.0
 
 defaults:
     - data_augmentation@color_aug: batch_wise_img_color_jitter_group_aug.yaml

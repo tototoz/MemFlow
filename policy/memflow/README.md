@@ -1,5 +1,8 @@
 # MemFlow Policy 集成说明（基于 LIBERO 框架）
 
+python train.py data=memflow policy=memflow_policy benchmark_name=LIBERO_SPATIAL \
+  lifelong=multitask seed=0 'eval.eval=false' train.n_epochs=30 
+
 本目录包含集成到 LIBERO 基准测试框架中的 **Memory-Augmented Flow Matching Policy** 实现。
 
 MemFlow 在 Flow Matching Policy 基础上引入层级记忆架构，解决长 horizon 任务中的阶段混淆和动作抖动问题。

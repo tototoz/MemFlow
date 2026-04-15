@@ -47,7 +47,7 @@ export CUDA_VISIBLE_DEVICES=0 && export MUJOCO_EGL_DEVICE_ID=0
 
 # Diffusion Policy baseline
 python train.py policy=memflow_policy benchmark_name=LIBERO_SPATIAL \
-  lifelong=multitask seed=0 'eval.eval=false' train.n_epochs=1000 +num_gpus=4
+  lifelong=multitask seed=0 'eval.eval=false' train.n_epochs=10 +num_gpus=4
 
 # 其他 baseline 同理
 python train.py policy=bc_transformer_policy benchmark_name=LIBERO_SPATIAL \

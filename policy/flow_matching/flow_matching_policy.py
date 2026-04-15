@@ -435,10 +435,10 @@ class FlowMatchingPolicy(BasePolicy):
             # Start from noise
             x = torch.randn(B, self.horizon, self.action_dim, device=obs_cond.device)
 
-            # Euler integration
+            # Midpoint Euler integration
             dt = 1.0 / self.num_integration_steps
             for i in range(self.num_integration_steps):
-                t = i / self.num_integration_steps
+                t = (i + 0.5) / self.num_integration_steps
                 t_batch = torch.full((B,), t, device=obs_cond.device, dtype=torch.float32)
                 v = self.vector_field_net(x, t_batch, global_cond=obs_cond)
                 x = x + v * dt
