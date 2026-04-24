@@ -1,57 +1,39 @@
 policy_type: MemFlowPolicy
 
-# Flow Matching parameters
-num_integration_steps: 10  # Default Euler steps (overridden by Router when enabled)
-horizon: 8  # Predicted action steps (must be power of 2 for UNet downsampling)
-# n_obs_steps defines both the LSTM observation window and the DINOv2 episodic window.
-# Requires data.seq_len >= n_obs_steps + horizon - 1 = 39 → use data=memflow.
-n_obs_steps: 32
+# Diffusion parameters
+num_diffusion_iters: 100
+beta_start: 0.0001
+beta_end: 0.02
+horizon: 8
+n_obs_steps: 2
 
 # Observation encoding
 image_embed_size: 64
 text_embed_size: 64
 obs_hidden_size: 256
 
-# UNet architecture for vector field prediction
-time_embed_dim: 256
+# UNet architecture
+diffusion_step_embed_dim: 256
 down_dims: [128, 256, 512]
 kernel_size: 3
 n_groups: 8
 cond_predict_scale: false
 
 # ============================================================
-# Memory Module Toggles
+# Denoising Convergence Monitor (DCM)
 # ============================================================
-use_working_memory: true    # L1: Action Memory (GRU) for motion coherence
-use_episodic_memory: true   # L2: DINOv2 cross-attention for task progress
-
-# Memory dimensions
-memory_dim: 256  # Output dimension for both memory modules
-
-# -----------------------------------------------------------
-# L1 Action Memory (GRU)
-# -----------------------------------------------------------
-working_memory_len: 16              # Number of recent actions to remember
-action_memory_hidden_dim: 128       # GRU input projection dimension
-action_memory_gru_dim: 256          # GRU hidden size
-
-# -----------------------------------------------------------
-# L2 Episodic Memory (Full-frame DINOv2 Cross-Attention)
-# -----------------------------------------------------------
-dinov2_model: dinov2-small
-dinov2_local_path: /home/ydj/article/LIBERO/dinov2_models/dinov2-small
-episodic_memory_hidden_dim: 256     # Cross-attention hidden dimension
-episodic_memory_n_heads: 4          # Cross-attention heads
-episodic_memory_window: 32          # DINOv2 feature window size (= n_obs_steps)
-
-# -----------------------------------------------------------
-# Adaptive Step Router (C2)
-# -----------------------------------------------------------
-use_adaptive_router: false          # Enable in Phase 2 training
-router_hidden_dims: [256, 128]
-router_step_options: [2, 4, 8, 16]
-router_lambda_speed: 0.1
-router_gumbel_tau: 1.0
+# End-to-end joint training: loss = DDPM_loss + lambda_dcm * DCM_loss
+# DCM labels are generated online from the current UNet's DDIM trajectory.
+dcm:
+  enabled: false
+  K_max: 50             # Max DDIM steps at inference
+  K_train: 20           # DDIM steps for online label generation during training
+  min_steps: 5          # Minimum steps before early-stop is allowed
+  threshold: 0.7        # Convergence score threshold for stopping
+  epsilon: 0.001        # Convergence tolerance (for soft label generation)
+  lambda_dcm: 0.1       # DCM loss weight
+  use_cond: true        # Use observation condition in monitor
+  hidden_dims: [64, 32] # Monitor MLP hidden layers
 
 defaults:
     - data_augmentation@color_aug: batch_wise_img_color_jitter_group_aug.yaml

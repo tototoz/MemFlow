@@ -94,7 +94,7 @@ export CUDA_VISIBLE_DEVICES=0 && export MUJOCO_EGL_DEVICE_ID=0
 
 # Flow Matching Policy baseline
 python train.py policy=flow_matching_policy benchmark_name=LIBERO_SPATIAL \
-  lifelong=multitask seed=0 'eval.eval=false' train.n_epochs=500
+  lifelong=multitask seed=0 'eval.eval=false' train.n_epochs=10
 
 # Diffusion Policy baseline（对比）
 python train.py policy=diffusion_policy benchmark_name=LIBERO_SPATIAL \
