@@ -4,7 +4,7 @@
 
 用法:
     # 仅显示实时窗口
-    python eval_vis.py --model_path /home/ydj/article/LIBERO/experiments/LIBERO_SPATIAL/Multitask/MemFlowPolicy_seed0/run_004/multitask_model_ep30.pth --task_id 1
+    python eval_vis.py --model_path /home/ydj/article/LIBERO/experiments/LIBERO_SPATIAL/Multitask/MemFlowPolicy_seed0/run_001/multitask_model_ep30.pth --task_id 1
 
     # 显示实时窗口并保存视频
     python eval_vis.py --model_path /home/ydj/article/LIBERO/experiments/LIBERO_SPATIAL/Multitask/FlowMatchingPolicy_seed0/run_001/multitask_model_ep25.pth --task_id 1 --save_video
@@ -174,6 +174,7 @@ def main():
 
         algo.reset()
         done = False
+        task_success = False
         steps = 0
 
         while steps < cfg.eval.max_steps and not done:
@@ -185,6 +186,7 @@ def main():
                 action = algo.policy.get_action(data)
 
             obs, reward, done, info = env.step(action[0])
+            task_success = task_success or info.get("success", False)
             env.env.render()  # 刷新实时窗口
 
             # 保存视频帧：用 sim.render 高分辨率渲染，不受策略输入分辨率限制
@@ -200,7 +202,7 @@ def main():
             video_writer.release()
             print(f"[info] 视频已保存: {video_path}")
 
-        success = int(info.get("success", False))
+        success = int(task_success)
         num_success += success
         print(f"  Episode {ep+1}/{args.n_eval}: {'成功' if success else '失败'} ({steps} 步)")
 
