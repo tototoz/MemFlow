@@ -26,7 +26,7 @@ cond_predict_scale: false
 # DCM labels are generated online from the current UNet's DDIM trajectory.
 dcm:
   enabled: false
-  K_max: 50             # Max DDIM steps at inference
+  K_max: 100             # Max DDIM steps at inference
   K_train: 20           # DDIM steps for online label generation during training
   min_steps: 5          # Minimum steps before early-stop is allowed
   threshold: 0.7        # Convergence score threshold for stopping
